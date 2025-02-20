@@ -1,204 +1,105 @@
-require('dotenv').config();
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
-const fs = require("fs");
+const os = require("os");
 
-// Setup server
 const app = express();
 const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI;
 
-// ✅ Ensure upload directory exists
-const uploadDir = path.join(__dirname, 'upload/images');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// ✅ Serve images correctly
-app.use('/images', express.static(uploadDir));
-
-// ✅ CORS configuration
-app.use(cors({
-    origin: ['http://localhost:3000', 'https://yaxso-e-commerce-gijy.onrender.com'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
-}));
+// Get your IPv4 Address
+const getLocalIp = () => {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    for (const details of iface) {
+      if (details.family === "IPv4" && !details.internal) {
+        return details.address;
+      }
+    }
+  }
+  return "localhost"; // Fallback
+};
+const LOCAL_IP = getLocalIp();
 
 app.use(express.json());
+app.use(cors({ origin: "*" }));
 
-// ✅ Connect to MongoDB
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('✅ MongoDB Connected'))
-    .catch(err => console.error("❌ MongoDB Connection Error:", err));
+// Connect to MongoDB
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.error("MongoDB Connection Error:", err));
 
-// ✅ Test API Route
-app.get("/", (req, res) => {
-    res.send("✅ Express App is Running");
-});
+// Serve Static Images
+app.use("/uploads", express.static("uploads"));
 
-// ✅ Image Storage Configuration
+// Multer Storage Setup
 const storage = multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-        cb(null, `${Date.now()}${path.extname(file.originalname)}`);
-    }
+  destination: "./uploads/",
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}${path.extname(file.originalname)}`);
+  },
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage: storage });
 
-// ✅ Image Upload API (Fixed URL)
-app.post("/upload", upload.single('product'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ success: 0, error: "No file uploaded" });
-    }
-    res.json({
-        success: 1,
-        image_url: `https://yaxso-e-commerce-gijy.onrender.com/images/${req.file.filename}`
-    });
+// Image Upload API
+app.post("/upload", upload.single("product"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "No file uploaded" });
+  }
+
+  const imageUrl = `http://${LOCAL_IP}:${PORT}/uploads/${req.file.filename}`;
+
+  res.json({
+    success: true,
+    image_url: imageUrl,
+  });
 });
 
-// ✅ Product Schema
+// Product Schema
 const Product = mongoose.model("Product", {
-    id: { type: Number, required: true },
-    name: { type: String, required: true },
-    image: { type: String, required: true },
-    category: { type: String, required: true },
-    new_price: { type: Number, required: true },
-    old_price: { type: Number, required: true },
-    date: { type: Date, default: Date.now },
-    available: { type: Boolean, default: true }
+  id: { type: Number, required: true },
+  name: { type: String, required: true },
+  image: { type: String, required: true },
+  category: { type: String, required: true },
+  new_price: { type: Number, required: true },
+  old_price: { type: Number, required: true },
+  date: { type: Date, default: Date.now },
+  available: { type: Boolean, default: true },
 });
 
-// ✅ Add Product API
-app.post('/addproduct', async (req, res) => {
-    let products = await Product.find({});
-    let id = products.length > 0 ? products[products.length - 1].id + 1 : 1;
+// Add Product API
+app.post("/addproduct", async (req, res) => {
+  let products = await Product.find({});
+  let id = products.length > 0 ? products.slice(-1)[0].id + 1 : 1;
 
-    const product = new Product({
-        id,
-        name: req.body.name,
-        image: req.body.image,
-        category: req.body.category,
-        new_price: req.body.new_price,
-        old_price: req.body.old_price,
-    });
+  const product = new Product({
+    id,
+    name: req.body.name,
+    image: req.body.image,
+    category: req.body.category,
+    new_price: req.body.new_price,
+    old_price: req.body.old_price,
+  });
 
-    await product.save();
-    res.json({ success: true, name: req.body.name });
+  await product.save();
+  res.json({ success: true, name: req.body.name });
 });
 
-// ✅ Remove Product API
-app.post('/removeproduct', async (req, res) => {
-    await Product.findOneAndDelete({ id: req.body.id });
-    res.json({ success: true, name: req.body.name });
+// Get All Products
+app.get("/allproducts", async (req, res) => {
+  let products = await Product.find({});
+  res.send(products);
 });
 
-// ✅ Get All Products API
-app.get('/allproducts', async (req, res) => {
-    let products = await Product.find({});
-    res.send(products);
-});
-
-// ✅ User Schema
-const Users = mongoose.model('Users', {
-    name: { type: String },
-    email: { type: String, unique: true },
-    password: { type: String },
-    cartData: { type: Object },
-    date: { type: Date, default: Date.now }
-});
-
-// ✅ User Signup API
-app.post('/signup', async (req, res) => {
-    let check = await Users.findOne({ email: req.body.email });
-    if (check) {
-        return res.status(400).json({ success: false, error: "Email already registered" });
-    }
-
-    let cart = {};
-    for (let i = 0; i < 300; i++) {
-        cart[i] = 0;
-    }
-
-    const user = new Users({
-        name: req.body.username,
-        email: req.body.email,
-        password: req.body.password,
-        cartData: cart,
-    });
-
-    await user.save();
-    const token = jwt.sign({ user: { id: user.id } }, 'secret_ecom');
-    res.json({ success: true, token });
-});
-
-// ✅ User Login API
-app.post('/login', async (req, res) => {
-    let user = await Users.findOne({ email: req.body.email });
-    if (user && req.body.password === user.password) {
-        const token = jwt.sign({ user: { id: user.id } }, 'secret_ecom');
-        res.json({ success: true, token });
-    } else {
-        res.json({ success: false, error: "Invalid credentials" });
-    }
-});
-
-// ✅ Get New Collection API
-app.get('/newcollections', async (req, res) => {
-    let products = await Product.find({});
-    let newCollection = products.slice(-8);
-    res.send(newCollection);
-});
-
-// ✅ Get Popular in Women API
-app.get('/popularinwomen', async (req, res) => {
-    let products = await Product.find({ category: "women" });
-    res.send(products.slice(0, 4));
-});
-
-// ✅ Middleware to Verify User Token
-const fetchUser = async (req, res, next) => {
-    const token = req.header('auth-token');
-    if (!token) {
-        return res.status(401).send({ error: "Unauthorized access" });
-    }
-    try {
-        req.user = jwt.verify(token, 'secret_ecom').user;
-        next();
-    } catch {
-        res.status(401).send({ error: "Invalid token" });
-    }
-};
-
-// ✅ Add to Cart API
-app.post('/addtocart', fetchUser, async (req, res) => {
-    let user = await Users.findOne({ _id: req.user.id });
-    user.cartData[req.body.itemId] += 1;
-    await user.save();
-    res.send("Added");
-});
-
-// ✅ Remove from Cart API
-app.post('/removefromcart', fetchUser, async (req, res) => {
-    let user = await Users.findOne({ _id: req.user.id });
-    if (user.cartData[req.body.itemId] > 0) user.cartData[req.body.itemId] -= 1;
-    await user.save();
-    res.send("Removed");
-});
-
-// ✅ Get Cart Data API
-app.post('/getcart', fetchUser, async (req, res) => {
-    let user = await Users.findOne({ _id: req.user.id });
-    res.json(user.cartData);
-});
-
-// ✅ Start Server
+// Start Server
 app.listen(PORT, () => {
-    console.log(`✅ Server Running on Port ${PORT}`);
+  console.log(`Server running at http://${LOCAL_IP}:${PORT}/`);
 });
 
 
