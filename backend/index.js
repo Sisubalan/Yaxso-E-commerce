@@ -24,9 +24,18 @@ mongoose.connect(MONGO_URI)
 
 
 // Allow requests from your frontend
-app.use(cors({
-    origin: 'http://localhost:3000',
+// app.use(cors({
+//     origin: 'http://localhost:3000',
+//   }));
+
+//   const cors = require('cors');
+
+  app.use(cors({
+    origin: ['http://localhost:3000', 'https://yaxso-e-commerce-gijy.onrender.com'], // Add your frontend domain here
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
   }));
+  
 
 // ApI cration
 
