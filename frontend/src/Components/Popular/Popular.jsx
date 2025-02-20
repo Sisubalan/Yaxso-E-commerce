@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 const Popular = () => {
     const [popularProducts, setPopularProducts] = useState([]);
-    const url = process.env.REACT_APP_API_URL || "http://localhost:4000"; // Fallback to localhost if undefined
+    const url = process.env.REACT_APP_API_URL || "https://yaxso-e-commerce-backend-neuf.onrender.com"; // Fallback to localhost if undefined
 
     useEffect(() => {
         if (!url) {
